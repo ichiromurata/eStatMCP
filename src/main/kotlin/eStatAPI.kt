@@ -10,10 +10,17 @@ import nl.adaptivity.xmlutil.serialization.XmlValue
 import nl.adaptivity.xmlutil.serialization.XmlElement
 import nl.adaptivity.xmlutil.serialization.XmlChildrenName
 
-val ESTAT_API_KEY: String = System.getenv("ESTAT_API_KEY")
+val ESTAT_API_KEY: String = System.getenv("ESTAT_API_KEY") ?: throw IllegalStateException("ESTAT_API_KEY environment variable is not found.")
+
+data class eStatResponse(
+	val isError: Boolean,
+	val textContent: String,
+	val resourceContent: String? = null,
+	val extResourceContent: String? = null
+)
 
 // Extension function to fetch a list of table
-suspend fun HttpClient.getTables(params: Map<String, String>): Pair<Boolean, List<String>> {
+suspend fun HttpClient.getTables(params: Map<String, String>): eStatResponse {
 	// URI for tables
 	val uri = "/rest/3.0/app/getStatsList"
 	// Request the list of table from the API with the parameters
@@ -23,27 +30,24 @@ suspend fun HttpClient.getTables(params: Map<String, String>): Pair<Boolean, Lis
 			parameter(param.key, param.value)
 		}
 		parameter("explanationGetFlg", "N")
+		if (!params.containsKey("limit") && responseSize != null) parameter("limit", responseSize)
 	}.body<StatsList>()
 
-	var response = if (tables.result.STATUS != 0 || tables.dataListInf == null) {
+	if (tables.result.STATUS != 0 || tables.dataListInf == null) {
 		// Return the error message if an error occurred
-		listOf(tables.result.ERROR_MSG)
+		return eStatResponse(true, tables.result.ERROR_MSG)
 	}
 	else {
-		// Map each table information to a formatted string
-		if (tables.parameter.LANG == "J") {
-			listOf("統計表の一覧(statsDataId: 統計表ID, no: 統計表番号, title: 統計表題, surveyName: 調査名, ministry: 所管府省)\n\n" +
-					tables.dataListInf.Tables.joinToString("\n") { it.toString() })
-		}
-		else {
-			listOf("List of table\n\n" + tables.dataListInf.Tables.joinToString("\n") { it.toString() })
-		}
-	}
+		val text = tables.dataListInf.resultInf.NEXT_KEY?.let {
+			"This is a part of results. The request with 'startPosition: ${tables.dataListInf.resultInf.NEXT_KEY}' will receive the rest."
+		} ?: ""
 
-	if (tables.dataListInf?.resultInf?.NEXT_KEY != null) {
-		response = response.plus("...data truncated. The request with 'startPosition = ${tables.dataListInf.resultInf.NEXT_KEY}' will receive the rest.")
+		val tableList = tables.dataListInf.Tables.distinctBy{it.toString()}.map {it.toList()}
+		val tableGrouped = tableList.groupBy{it.last()}.mapValues{it.value.groupBy{tbl -> tbl[tbl.lastIndex - 1]}.mapValues{mEnt -> mEnt.value.map{tbl -> tbl.dropLast(2)}}}
+		val jsonList = tableGrouped.mapValues{m -> m.value.mapValues{s -> s.value.map{tbl -> "{\"statsDataId\": ${tbl[0]}, \"title\": ${tbl[1]}}"}}}
+
+		return eStatResponse(false, text, jsonList.toString().replace("=", ":"))
 	}
-	return Pair(tables.result.STATUS != 0, response)
 }
 
 // Data class representing the tables response from the API
@@ -64,7 +68,7 @@ data class StatsList(
 
 	@Serializable
 	data class DATALIST_INF(
-		val number: NUMBER, val resultInf: RESULT_INF, @SerialName("TABLE_INF") val Tables: List<TableInf>
+		val number: NUMBER, val resultInf: RESULT_INF, @SerialName("TABLE_INF") val Tables: List<TableInf>, val listInf: List<LIST_INF>? = null
 	){
 		@Serializable
 		data class NUMBER(@XmlValue val value: Int)
@@ -72,6 +76,14 @@ data class StatsList(
 		data class RESULT_INF(
 			@XmlElement val FROM_NUMBER: Int = 0, @XmlElement val TO_NUMBER: Int = 0, @XmlElement val NEXT_KEY: Int? = null
 		)
+		@Serializable
+		data class LIST_INF(
+			val id: String, @XmlElement val STAT_NAME: String, @XmlElement val GOV_ORG: String
+		){
+			fun toList(): List<String> {
+				return listOf("\"$id\"", "\"$STAT_NAME\"", "\"$GOV_ORG\"")
+			}
+		}
 	}
 }
 
@@ -86,7 +98,8 @@ data class TableInf(
 	val id: String, val statName: STAT_NAME, val govOrg: GOV_ORG, @XmlElement val STATISTICS_NAME: String, val title: TITLE,
 	@XmlElement val CYCLE: String, @XmlElement val SURVEY_DATE: String, @XmlElement val OPEN_DATE: String, @XmlElement val SMALL_AREA: Int, @XmlElement val COLLECT_AREA: String,
 	val mainCategory: MAIN_CATEGORY, val subCategory: SUB_CATEGORY, @XmlElement val OVERALL_TOTAL_NUMBER: Int,
-	@XmlElement val UPDATED_DATE: String, val statisticsNameSpec: STATISTICS_NAME_SPEC, val titleSpec: TITLE_SPEC
+	@XmlElement val UPDATED_DATE: String, val statisticsNameSpec: STATISTICS_NAME_SPEC, val description: DESCRIPTION? = null, val titleSpec: TITLE_SPEC,
+	@XmlElement val releaseCount: Int? = null
 ) {
 	@Serializable
 	data class STAT_NAME(
@@ -117,22 +130,120 @@ data class TableInf(
 		@XmlElement val TABULATION_SUB_CATEGORY5: String? = null
 	)
 	@Serializable
+	data class DESCRIPTION(
+		@XmlElement val TABULATION_CATEGORY_EXPLANATION: String, @XmlElement val TABULATION_SUB_CATEGORY_EXPLANATION1: String? = null,
+		@XmlElement val TABULATION_SUB_CATEGORY_EXPLANATION2: String? = null,
+		@XmlElement val TABULATION_SUB_CATEGORY_EXPLANATION3: String? = null,
+		@XmlElement val TABULATION_SUB_CATEGORY_EXPLANATION4: String? = null,
+		@XmlElement val TABULATION_SUB_CATEGORY_EXPLANATION5: String? = null
+	)
+	@Serializable
 	data class TITLE_SPEC(
 		@XmlElement val TABLE_CATEGORY: String? = null, @XmlElement val TABLE_NAME: String,
+		@XmlElement val TABLE_EXPLANATION: String? = null,
 		@XmlElement val TABLE_SUB_CATEGORY1: String? = null,
 		@XmlElement val TABLE_SUB_CATEGORY2: String? = null,
 		@XmlElement val TABLE_SUB_CATEGORY3: String? = null
 	)
 
 	override fun toString(): String {
-		return buildList(){
-			add("statsDataId: $id")
-			if(title.no != null) add("no: ${title.no}")
-			add("title: \"${title.value}\"")
-			add("surveyName: \"$STATISTICS_NAME\"")
-			add("ministry: \"${govOrg.value}\"")
-		}.toString()
+		return "$id,${title.no},\"${title.value}\",\"$STATISTICS_NAME\",\"${govOrg.value}\""
 	}
+	fun toList(): List<String> {
+		return listOf("\"$id\"", "\"${title.value}\"", "\"${STATISTICS_NAME}\"", "\"${govOrg.value}\"")
+	}
+}
+
+// Extension function to fetch a list of survey
+suspend fun HttpClient.getSurveys(params: Map<String, String>): eStatResponse {
+	// URI for tables
+	val uri = "/rest/3.0/app/getStatsList"
+	// Request the list of table from the API with the parameters
+	val surveys = this.get(uri) {
+		parameter("appId", ESTAT_API_KEY)
+		params.forEach { param ->
+			parameter(param.key, param.value)
+		}
+		parameter("statsNameList", "Y")
+		if (!params.containsKey("limit") && responseSize != null) parameter("limit", responseSize)
+	}.body<StatsList>()
+
+	if (surveys.result.STATUS != 0 || surveys.dataListInf == null) {
+		// Return the error message if an error occurred
+		return eStatResponse(true, surveys.result.ERROR_MSG)
+	}
+	else {
+		val text = surveys.dataListInf.resultInf.NEXT_KEY?.let {
+			"This is a part of results. The request with 'startPosition: ${surveys.dataListInf.resultInf.NEXT_KEY}' will receive the rest."
+		} ?: ""
+
+		val surveyList = surveys.dataListInf.listInf!!.map {it.toList()}
+		val surveyGrouped = surveyList.groupBy{it.last()}.mapValues{it.value.map{svy -> "{\"statsCode\": ${svy[0]}, \"name\": ${svy[1]}}"}}
+
+		return eStatResponse(false, text, surveyGrouped.toString().replace("=", ":"))
+	}
+}
+
+// Extension function to fetch metadata of specified table
+suspend fun HttpClient.getMetadata(params: Map<String, String>): eStatResponse {
+	// URI for metadata
+	val uri = "/rest/3.0/app/getMetaInfo"
+	// Request the metadata from the API with the parameters
+	val metadata = this.get(uri) {
+		parameter("appId", ESTAT_API_KEY)
+		params.forEach { param ->
+			parameter(param.key, param.value)
+		}
+		parameter("explanationGetFlg", "N")
+	}.body<MetaInfo>()
+
+	if (metadata.result.STATUS != 0) {
+		// Return the error message if an error occurred
+		return(eStatResponse(true, metadata.result.ERROR_MSG))
+	}
+	else {
+		val text = metadata.metaDataInf!!.TABLE_INF.title.value
+
+		val metaRes = metadata.metaDataInf.CLASS_INF.joinToString(",") {
+			"\"${it.id}\": {\"name\": \"${it.name}\", \"code\": {" +
+					it.classes.joinToString(","){cls ->
+						"\"${cls.code}\": \"${cls.name}\""
+					} + "}}"
+			// Limit class size to save context length
+//			"\"${it.id}\": {\"name\": \"${it.name}\", \"code\": {" +
+//					if (it.classes.size <= 10) {
+//						it.classes.joinToString(","){cls ->
+//							"\"${cls.code}\": \"${cls.name}\""
+//						}
+//					} else {
+//						it.classes.take(5).joinToString(","){cls ->
+//							"\"${cls.code}\": \"${cls.name}\""
+//						} + "," + it.classes.takeLast(5).joinToString(","){cls ->
+//									"\"${cls.code}\": \"${cls.name}\""
+//								}
+//					} + "}}"
+		}
+
+		return(eStatResponse(false, text, "{$metaRes}"))
+	}
+}
+
+// Data class representing the Metadata response from the API
+@Serializable
+@SerialName("GET_META_INFO")
+data class MetaInfo(
+	val result: RESULT, val parameter: PARAMETER, val metaDataInf: METADATA_INF? = null
+) {
+	@Serializable
+	data class PARAMETER(
+		@XmlElement val LANG: String, @XmlElement val STATS_DATA_ID: String, @XmlElement val DATA_FORMAT: String? = null,
+		@XmlElement val EXPLANATION_GET_FLG: String? = null
+	)
+
+	@Serializable
+	data class METADATA_INF(
+		@XmlElement val TABLE_INF: TableInf, @XmlChildrenName("CLASS_OBJ") val CLASS_INF: List<CLASS_OBJ>
+	)
 }
 
 @Serializable
@@ -144,25 +255,24 @@ data class CLASS_OBJ(
 	data class CLASS(
 		val code: String, val name: String, val level: String, val unit: String? = null,
 		val parentCode: String? = null, val addInf: String? = null
-	) {
-		override fun toString(): String {
-			return buildList(){
-				add("code: \"$code\"")
-				add("name: \"$name\"")
-				add("level: $level")
-				if(unit != null) add("unit: \"$unit\"")
-				if(parentCode != null) add("parentCode: \"$parentCode\"")
-			}.toString()
-		}
-	}
+	)
 
-	override fun toString(): String {
-		return "metaDataID: $id, metaDataName: \"$name\"\n${classes.joinToString("\n") { it.toString() }}\n"
+	val codeNameMap = buildMap {
+		if (id == "tab") {
+			classes.forEach {
+				put(it.code, if(it.unit != null) "\"${it.name}(${it.unit})\"" else "\"${it.name}\"")
+			}
+		}
+		else {
+			classes.forEach {
+				put(it.code, "\"${it.name}\"")
+			}
+		}
 	}
 }
 
 // Extension function to fetch data of statistical table
-suspend fun HttpClient.getData(params: Map<String, String>): Pair<Boolean, List<String>> {
+suspend fun HttpClient.getData(params: Map<String, String>): eStatResponse {
 	// URI for Data
 	val uri = "/rest/3.0/app/getStatsData"
 	// Request the statistical data from the API with the parameters
@@ -172,41 +282,60 @@ suspend fun HttpClient.getData(params: Map<String, String>): Pair<Boolean, List<
 		params.forEach { param ->
 			parameter(param.key, param.value)
 		}
+		if (!params.containsKey("limit") && responseSize != null) parameter("limit", responseSize)
 	}.body<StatsDataInfo>()
 
-	var response =  if (statsData.result.STATUS != 0) {
+	if (statsData.result.STATUS != 0 || statsData.statisticalData?.dataInf == null) {
 		// Return the error message if an error occurred
-		listOf(statsData.result.ERROR_MSG)
+		return eStatResponse(true, statsData.result.ERROR_MSG)
 	}
 	else {
-		if (statsData.statisticalData?.dataInf == null) {
-			listOf("No data found.")
-		}
-		else {
-			buildList(){
-				statsData.statisticalData.dataInf.let {
-					add("統計表の値(value: 値, tab: 表章事項符号, time: 調査時期符号, area: 調査地域, unit: 単位, cat01--cat15: 分類事項符号1--15, annotation: 注記符号)\n\n" +
-							it.Values.joinToString("\n") { v -> v.toString() })
-					add("統計表のメタ情報(code: 符号, name: 名称, level: 階層, unit: 単位, parentCode: 親階層の符号)\n\n" +
-							statsData.statisticalData.CLASS_INF.joinToString("\n") { v -> v.toString() })
-					if (it.Notes.isNotEmpty()){
-						add("値の説明(char: 値, description: この値についての説明)\n\n${it.Notes.joinToString("\n") { v -> v.toString() }}")
-					}
-					if (it.Annotations.isNotEmpty()){
-						add("注記の説明(annotation: 注記符号, description: この注記の内容)\n\n${it.Annotations.joinToString("\n") { v -> v.toString() }}")
-					}
+		val text = "${statsData.statisticalData.TABLE_INF.STATISTICS_NAME} ${statsData.statisticalData.TABLE_INF.title.value}\n" +
+				if (statsData.statisticalData.resultInf.NEXT_KEY != null) {
+					"This is a part of results. The request with 'startPosition: ${statsData.statisticalData.resultInf.NEXT_KEY}' will receive the rest."
+				} else ""
+
+		val valueList = statsData.statisticalData.dataInf.Values.map {it.toMap()}
+		val namedValueList = valueList.map { v ->
+			v.map {
+				if(it.key == "value") {
+					it.value
+				} else {
+					statsData.statisticalData.idClassObjMap[it.key]?.get(it.value) ?: it.value
 				}
 			}
 		}
-	}
 
-	if (statsData.statisticalData?.resultInf?.NEXT_KEY != null) {
-		response = response.plus("...data truncated. The request with 'startPosition = ${statsData.statisticalData.resultInf.NEXT_KEY}' will receive the rest.")
+		// Recursively grouping attributes from head
+		fun groupByFirst(data: List<List<String>>): Any {
+			if (data.first().size == 2) {
+				return buildMap {
+					data.forEach {put(it[0], it[1])}
+				}
+			}
+			else {
+				val grouped = data.groupBy {it.first()}
+				return grouped.mapValues {groupByFirst(it.value.map{v -> v.drop(1)})}
+			}
+		}
+
+		val valueListGrouped = groupByFirst(namedValueList)
+
+		// Not using NOTES because they are uncleaned
+		//val footnotes = statsData.statisticalData.dataInf.Notes.map{it.toString()} + statsData.statisticalData.dataInf.Annotations.map{it.toString()}
+
+		val footnotes = statsData.statisticalData.dataInf.Annotations.map{it.toString()}
+
+		return if (footnotes.isEmpty()) {
+			eStatResponse(false, text, valueListGrouped.toString().replace("=", ":"))
+		} else {
+			eStatResponse(false, text, valueListGrouped.toString().replace("=", ":"),
+				"{footnotes: [${footnotes.joinToString(",")}]}")
+		}
 	}
-	return Pair(statsData.result.STATUS != 0, response)
 }
 
-// Data class representing the Metadata response from the API
+// Data class representing the statistics data response from the API
 @Serializable
 @SerialName("GET_STATS_DATA")
 data class StatsDataInfo(
@@ -265,9 +394,12 @@ data class StatsDataInfo(
 		val resultInf: RESULT_INF, val TABLE_INF: TableInf,
 		@XmlChildrenName("CLASS_OBJ") val CLASS_INF: List<CLASS_OBJ>, val dataInf: DATA_INF? = null
 	){
+		val idClassObjMap = buildMap {
+			CLASS_INF.forEach {put(it.id, it.codeNameMap)}
+		}
 		@Serializable
 		data class RESULT_INF(
-			@XmlElement val TOTAL_NUMBER: Int, @XmlElement val FROM_NUMBER: Int, @XmlElement val TO_NUMBER: Int,
+			@XmlElement val TOTAL_NUMBER: Int, @XmlElement val FROM_NUMBER: Int = 0, @XmlElement val TO_NUMBER: Int = 0,
 			@XmlElement val NEXT_KEY: Int? = null
 		)
 		@Serializable
@@ -280,7 +412,7 @@ data class StatsDataInfo(
 				val char: String, @XmlValue val value: String
 			){
 				override fun toString(): String {
-					return "[char: $char, description: \"$value\"]"
+					return "\"$char\"=\"$value\""
 				}
 			}
 			@Serializable
@@ -288,7 +420,7 @@ data class StatsDataInfo(
 				val annotation: String, @XmlValue val value: String
 			){
 				override fun toString(): String {
-					return "[annotation: \"$annotation\", description: \"$value\"]"
+					return "\"<$annotation>\"=\"$value\""
 				}
 			}
 			@Serializable
@@ -300,30 +432,28 @@ data class StatsDataInfo(
 				val area: String? = null, val time: String? = null, val unit: String? = null, val annotation: String? = null,
 				@XmlValue val value: String
 			){
-				override fun toString(): String {
-					return buildList(){
-						add("value: $value")
-						if(tab != null) add("tab: $tab")
-						if(cat01 != null) add("cat01: $cat01")
-						if(cat02 != null) add("cat02: $cat02")
-						if(cat03 != null) add("cat03: $cat03")
-						if(cat04 != null) add("cat04: $cat04")
-						if(cat05 != null) add("cat05: $cat05")
-						if(cat06 != null) add("cat06: $cat06")
-						if(cat07 != null) add("cat07: $cat07")
-						if(cat08 != null) add("cat08: $cat08")
-						if(cat09 != null) add("cat09: $cat09")
-						if(cat10 != null) add("cat10: $cat10")
-						if(cat11 != null) add("cat11: $cat11")
-						if(cat12 != null) add("cat12: $cat12")
-						if(cat13 != null) add("cat13: $cat13")
-						if(cat14 != null) add("cat14: $cat14")
-						if(cat15 != null) add("cat15: $cat15")
-						if(area != null) add("area: $area")
-						if(time != null) add("time: $time")
-						if(unit != null) add("unit: \"$unit\"")
-						if(annotation != null) add("annotation: \"$annotation\"")
-					}.toString()
+				fun toMap(): Map<String, String> {
+					return buildMap() {
+						tab?.let {put("tab", tab)}
+						time?.let {put("time", time)}
+						area?.let {put("area", area)}
+						cat01?.let {put("cat01", cat01)}
+						cat02?.let {put("cat02", cat02)}
+						cat03?.let {put("cat03", cat03)}
+						cat04?.let {put("cat04", cat04)}
+						cat05?.let {put("cat05", cat05)}
+						cat06?.let {put("cat06", cat06)}
+						cat07?.let {put("cat07", cat07)}
+						cat08?.let {put("cat08", cat08)}
+						cat09?.let {put("cat09", cat09)}
+						cat10?.let {put("cat10", cat10)}
+						cat11?.let {put("cat11", cat11)}
+						cat12?.let {put("cat12", cat12)}
+						cat13?.let {put("cat13", cat13)}
+						cat14?.let {put("cat14", cat14)}
+						cat15?.let {put("cat15", cat15)}
+						put("value", if (annotation != null) "$value <$annotation>" else value)
+					}
 				}
 			}
 		}

@@ -1,26 +1,25 @@
 plugins {
     kotlin("jvm") version "2.1.0"
     kotlin("plugin.serialization") version "2.1.0"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.0.0-beta13"
+    application
 }
 
 group = "space.resolvingcode.eStatMCP"
-version = "0.1.0"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
 }
 
-val mcpVersion = "0.3.0"
-val slf4jVersion = "2.0.9"
-val ktorVersion = "3.1.1"
+val ktorVersion = "3.1.3"
 
 dependencies {
-    implementation("io.modelcontextprotocol:kotlin-sdk:$mcpVersion")
-    implementation("org.slf4j:slf4j-nop:$slf4jVersion")
+    implementation("io.modelcontextprotocol:kotlin-sdk:0.5.0")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-xml:$ktorVersion")
+    implementation("org.slf4j:slf4j-nop:2.0.17")
     testImplementation(kotlin("test"))
 }
 
@@ -30,4 +29,8 @@ tasks.test {
 
 kotlin {
     jvmToolchain(17)
+}
+
+application {
+    mainClass.set("space.resolvingcode.eStatMCP.MainKt")
 }
