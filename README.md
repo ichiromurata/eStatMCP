@@ -30,7 +30,9 @@
 
 
 ### Claude Desktopの設定
-Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述を加えてください。
+Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述を加えてください。`claude_desktop_config.json`はMacの場合は`~/Library/Application\ Support/Claude/`、Windowsの場合は`%AppData%\Claude\`にあります。
+
+#### ビルドしたjarファイルがある場合
 
 ```json
 {
@@ -50,12 +52,38 @@ Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述�
 }
 ```
 
+#### Dockerを使う場合
+
+```json
+{
+  "mcpServers": {
+    "eStatMCP": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "ESTAT_API_KEY",
+        "-e",
+        "RESPONSE_SIZE",
+        "ichiro21/estat-mcp"
+      ],
+      "env": {
+        "ESTAT_API_KEY": "<アプリケーションID>",
+        "RESPONSE_SIZE": "100"
+      }
+    }
+  }
+}
+```
+
 `<アプリケーションID>`には、ご自身のe-StatのアプリケーションIDを入れてください。
 
 `RESPONSE_SIZE`には、e-Stat APIから1度に受信するデータ数を指定します。AIチャットのコンテキスト長を制限したい場合に使用します。e-Stat API側のデフォルトは100,000です。
 
 ### サーバプログラムのビルド
-このMCPサーバをビルドするにはJava 17かそれ以降のバージョンが必要です。次のコマンドでjarファイルを作成します。
+このMCPサーバをビルドするにはJava 17かそれ以降のバージョンとGradleが必要です。次のコマンドでjarファイルを作成します。
 
 ```shell
 ./gradlew clean build -x test
@@ -67,7 +95,7 @@ Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述�
 
 [https://claude.ai/share/ac66bee7-1178-4f8a-977c-cdd6629c0f21](https://claude.ai/share/ac66bee7-1178-4f8a-977c-cdd6629c0f21)
 
-統計表は数が多いため、調べたい調査名か決まっていないときは統計表を検索する前に統計調査を検索するとよいかも知れません。
+調べたい調査名か決まっていないときは統計表を検索する前に統計調査を検索することができます。
 
 ### 東京都の家計調査の結果を取得（途中まで）
 
@@ -79,6 +107,5 @@ Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述�
 
 [https://claude.ai/share/e33bbc27-6094-4feb-984f-5c2cf6d5e5a2](https://claude.ai/share/e33bbc27-6094-4feb-984f-5c2cf6d5e5a2)
 
-統計調査名、項目名まで指示するとなかなかよい動きをしてくれました。
-
+統計調査名、項目名まで指示したら的確に取得してくれました。人口推計の「参考表」を取得させないために、「統計表」で検索するように指定しています。
 
