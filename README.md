@@ -117,7 +117,7 @@ VS Codeを使う場合は、`settings.json`に次の記述を加えてくださ�
 }
 ```
 
-VS Codeでは設定の中でOSの環境変数を`${env:ESTAT_API_KEY}`のように呼び出すことができます。OSの環境変数を使わない場合は直接記述するか、[VS Codeに記憶させることができます。](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_add-an-mcp-server-to-your-workspace)
+VS Codeでは設定の中でOSの環境変数を`${env:ESTAT_API_KEY}`のように呼び出すことができます。OSの環境変数を使わない場合は直接記述するか、VS Codeに記憶させることができます。（[こちら](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_add-an-mcp-server-to-your-workspace)の記入例を参照）
 
 ### サーバプログラムのビルド
 このMCPサーバをビルドするにはJava 17かそれ以降のバージョンとGradleが必要です。次のコマンドでjarファイルを作成します。
