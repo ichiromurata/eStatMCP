@@ -45,10 +45,10 @@ fun configureServer(): Server {
     val server = Server(
         Implementation(
             name = "e-StatJP", // Tool name is "e-StatJP"
-            version = "0.2.0" // Version of the implementation
+            version = "0.2.1" // Version of the implementation
         ),
         ServerOptions(
-            capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = true))
+            capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))
         )
     )
 
@@ -146,22 +146,16 @@ fun configureServer(): Server {
             }
         }
 
-        val (isError, text, res) = httpClient.getTables(reqArgs)
+        val (isError, texts) = httpClient.getTables(reqArgs)
 
-        if(res == null) {
-            CallToolResult(isError = isError, content = listOf(TextContent(text)))
-        }
-        else {
-            CallToolResult(isError = isError, content = listOf(TextContent(text),
-                    EmbeddedResource(TextResourceContents(res, "", "application/json"))))
-        }
+        CallToolResult(isError = isError, content = texts.map {TextContent(it)})
     }
 
     // Register a tool to fetch a list of table
     server.addTool(
         name = "get_surveys",
         description = """
-            Searches surveys that results are available to get from the portal site of official statistics of Japan, e-Stat.
+            Searches surveys that results are available on e-Stat.
             Use this when you are unsure which survey is appropriate for the context.
         """.trimIndent(),
         inputSchema = Tool.Input(
@@ -242,15 +236,9 @@ fun configureServer(): Server {
             }
         }
 
-        val (isError, text, res) = httpClient.getSurveys(reqArgs)
+        val (isError, texts) = httpClient.getSurveys(reqArgs)
 
-        if(res == null) {
-            CallToolResult(isError = isError, content = listOf(TextContent(text)))
-        }
-        else {
-            CallToolResult(isError = isError, content = listOf(TextContent(text),
-                EmbeddedResource(TextResourceContents(res, "", "application/json"))))
-        }
+        CallToolResult(isError = isError, content = texts.map {TextContent(it)})
     }
 
     // Register a tool to fetch metadata of specific table
@@ -258,7 +246,6 @@ fun configureServer(): Server {
         name = "get_metadata",
         description = """
             Gets the metadata of the requested table. If you don't know the ID, use `get_tables` beforehand.
-            Result will be truncated for over 10 codes per classification item.
         """.trimIndent(),
         inputSchema = Tool.Input(
             properties = JsonObject(
@@ -284,15 +271,9 @@ fun configureServer(): Server {
             )
         }
 
-        val (isError, text, res) = httpClient.getMetadata(reqArgs)
+        val (isError, texts) = httpClient.getMetadata(reqArgs)
 
-        if(res == null) {
-            CallToolResult(isError = isError, content = listOf(TextContent(text)))
-        }
-        else {
-            CallToolResult(isError = isError, content = listOf(TextContent(text),
-                EmbeddedResource(TextResourceContents(res, "", "application/json"))))
-        }
+        CallToolResult(isError = isError, content = texts.map {TextContent(it)})
     }
 
     // Register a tool to fetch statistical data
@@ -301,7 +282,7 @@ fun configureServer(): Server {
         description = """
             Gets the data of the requested table. If you don't know the ID, use `get_tables` beforehand.
             Use metadata to filter the result.
-            Some result values have special annotation format like '100 <A1>'.
+            Result values could have special annotation format like '100 <A1>'.
         """.trimIndent(),
         inputSchema = Tool.Input(
             properties = JsonObject(
@@ -384,6 +365,12 @@ fun configureServer(): Server {
                             "description" to JsonPrimitive("Filter by cat09-code")
                         )
                     ),
+                    "cdCat10" to JsonObject(
+                        mapOf(
+                            "type" to JsonPrimitive("string"),
+                            "description" to JsonPrimitive("Filter by cat10-code")
+                        )
+                    ),
                     "startPosition" to JsonObject(
                         mapOf(
                             "type" to JsonPrimitive("number"),
@@ -423,19 +410,9 @@ fun configureServer(): Server {
             )
         }
 
-        val (isError, text, res, extRes) = httpClient.getData(reqArgs)
+        val (isError, texts) = httpClient.getData(reqArgs)
 
-        if(res == null) {
-            CallToolResult(isError = isError, content = listOf(TextContent(text)))
-        }
-        else if(extRes == null) {
-            CallToolResult(isError = isError, content = listOf(TextContent(text),
-                EmbeddedResource(TextResourceContents(res, "", "application/json"))))
-        } else {
-            CallToolResult(isError = isError, content = listOf(TextContent(text),
-                EmbeddedResource(TextResourceContents(res, "", "application/json")),
-                EmbeddedResource(TextResourceContents(extRes, "", "application/json"))))
-        }
+        CallToolResult(isError = isError, content = texts.map {TextContent(it)})
     }
 
     return server

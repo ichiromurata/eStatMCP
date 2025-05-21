@@ -14,9 +14,7 @@ val ESTAT_API_KEY: String = System.getenv("ESTAT_API_KEY") ?: throw IllegalState
 
 data class eStatResponse(
 	val isError: Boolean,
-	val textContent: String,
-	val resourceContent: String? = null,
-	val extResourceContent: String? = null
+	val textContents: List<String>
 )
 
 // Extension function to fetch a list of table
@@ -35,18 +33,18 @@ suspend fun HttpClient.getTables(params: Map<String, String>): eStatResponse {
 
 	if (tables.result.STATUS != 0 || tables.dataListInf == null) {
 		// Return the error message if an error occurred
-		return eStatResponse(true, tables.result.ERROR_MSG)
+		return eStatResponse(true, listOf(tables.result.ERROR_MSG))
 	}
 	else {
 		val text = tables.dataListInf.resultInf.NEXT_KEY?.let {
 			"This is a part of results. The request with 'startPosition: ${tables.dataListInf.resultInf.NEXT_KEY}' will receive the rest."
-		} ?: ""
+		}
 
 		val tableList = tables.dataListInf.Tables.distinctBy{it.toString()}.map {it.toList()}
 		val tableGrouped = tableList.groupBy{it.last()}.mapValues{it.value.groupBy{tbl -> tbl[tbl.lastIndex - 1]}.mapValues{mEnt -> mEnt.value.map{tbl -> tbl.dropLast(2)}}}
 		val jsonList = tableGrouped.mapValues{m -> m.value.mapValues{s -> s.value.map{tbl -> "{\"statsDataId\": ${tbl[0]}, \"title\": ${tbl[1]}}"}}}
 
-		return eStatResponse(false, text, jsonList.toString().replace("=", ":"))
+		return eStatResponse(false, listOfNotNull(jsonList.toString().replace("=", ":"), text))
 	}
 }
 
@@ -170,17 +168,17 @@ suspend fun HttpClient.getSurveys(params: Map<String, String>): eStatResponse {
 
 	if (surveys.result.STATUS != 0 || surveys.dataListInf == null) {
 		// Return the error message if an error occurred
-		return eStatResponse(true, surveys.result.ERROR_MSG)
+		return eStatResponse(true, listOf(surveys.result.ERROR_MSG))
 	}
 	else {
 		val text = surveys.dataListInf.resultInf.NEXT_KEY?.let {
 			"This is a part of results. The request with 'startPosition: ${surveys.dataListInf.resultInf.NEXT_KEY}' will receive the rest."
-		} ?: ""
+		}
 
 		val surveyList = surveys.dataListInf.listInf!!.map {it.toList()}
 		val surveyGrouped = surveyList.groupBy{it.last()}.mapValues{it.value.map{svy -> "{\"statsCode\": ${svy[0]}, \"name\": ${svy[1]}}"}}
 
-		return eStatResponse(false, text, surveyGrouped.toString().replace("=", ":"))
+		return eStatResponse(false, listOfNotNull(surveyGrouped.toString().replace("=", ":"), text))
 	}
 }
 
@@ -199,7 +197,7 @@ suspend fun HttpClient.getMetadata(params: Map<String, String>): eStatResponse {
 
 	if (metadata.result.STATUS != 0) {
 		// Return the error message if an error occurred
-		return(eStatResponse(true, metadata.result.ERROR_MSG))
+		return(eStatResponse(true, listOf(metadata.result.ERROR_MSG)))
 	}
 	else {
 		val text = metadata.metaDataInf!!.TABLE_INF.title.value
@@ -224,7 +222,7 @@ suspend fun HttpClient.getMetadata(params: Map<String, String>): eStatResponse {
 //					} + "}}"
 		}
 
-		return(eStatResponse(false, text, "{$metaRes}"))
+		return(eStatResponse(false, listOf(text, "{$metaRes}")))
 	}
 }
 
@@ -258,15 +256,8 @@ data class CLASS_OBJ(
 	)
 
 	val codeNameMap = buildMap {
-		if (id == "tab") {
-			classes.forEach {
-				put(it.code, if(it.unit != null) "\"${it.name}(${it.unit})\"" else "\"${it.name}\"")
-			}
-		}
-		else {
-			classes.forEach {
-				put(it.code, "\"${it.name}\"")
-			}
+		classes.forEach {
+			put(it.code, "\"${it.name}${it.unit?.let {u -> "($u)"} ?: ""}\"")
 		}
 	}
 }
@@ -287,7 +278,7 @@ suspend fun HttpClient.getData(params: Map<String, String>): eStatResponse {
 
 	if (statsData.result.STATUS != 0 || statsData.statisticalData?.dataInf == null) {
 		// Return the error message if an error occurred
-		return eStatResponse(true, statsData.result.ERROR_MSG)
+		return eStatResponse(true, listOf(statsData.result.ERROR_MSG))
 	}
 	else {
 		val text = "${statsData.statisticalData.TABLE_INF.STATISTICS_NAME} ${statsData.statisticalData.TABLE_INF.title.value}\n" +
@@ -324,14 +315,11 @@ suspend fun HttpClient.getData(params: Map<String, String>): eStatResponse {
 		// Not using NOTES because they are uncleaned
 		//val footnotes = statsData.statisticalData.dataInf.Notes.map{it.toString()} + statsData.statisticalData.dataInf.Annotations.map{it.toString()}
 
-		val footnotes = statsData.statisticalData.dataInf.Annotations.map{it.toString()}
+		val footnotes = if(statsData.statisticalData.dataInf.Annotations.isNotEmpty()) {
+			"{\"footnotes\": [${statsData.statisticalData.dataInf.Annotations.joinToString(",")}]}"
+		} else null
 
-		return if (footnotes.isEmpty()) {
-			eStatResponse(false, text, valueListGrouped.toString().replace("=", ":"))
-		} else {
-			eStatResponse(false, text, valueListGrouped.toString().replace("=", ":"),
-				"{footnotes: [${footnotes.joinToString(",")}]}")
-		}
+		return eStatResponse(false, listOfNotNull(text, valueListGrouped.toString().replace("=", ":"), footnotes))
 	}
 }
 
@@ -434,25 +422,25 @@ data class StatsDataInfo(
 			){
 				fun toMap(): Map<String, String> {
 					return buildMap() {
-						tab?.let {put("tab", tab)}
-						time?.let {put("time", time)}
-						area?.let {put("area", area)}
-						cat01?.let {put("cat01", cat01)}
-						cat02?.let {put("cat02", cat02)}
-						cat03?.let {put("cat03", cat03)}
-						cat04?.let {put("cat04", cat04)}
-						cat05?.let {put("cat05", cat05)}
-						cat06?.let {put("cat06", cat06)}
-						cat07?.let {put("cat07", cat07)}
-						cat08?.let {put("cat08", cat08)}
-						cat09?.let {put("cat09", cat09)}
-						cat10?.let {put("cat10", cat10)}
-						cat11?.let {put("cat11", cat11)}
-						cat12?.let {put("cat12", cat12)}
-						cat13?.let {put("cat13", cat13)}
-						cat14?.let {put("cat14", cat14)}
-						cat15?.let {put("cat15", cat15)}
-						put("value", if (annotation != null) "$value <$annotation>" else value)
+						tab?.let {put("tab", it)}
+						time?.let {put("time", it)}
+						area?.let {put("area", it)}
+						cat01?.let {put("cat01", it)}
+						cat02?.let {put("cat02", it)}
+						cat03?.let {put("cat03", it)}
+						cat04?.let {put("cat04", it)}
+						cat05?.let {put("cat05", it)}
+						cat06?.let {put("cat06", it)}
+						cat07?.let {put("cat07", it)}
+						cat08?.let {put("cat08", it)}
+						cat09?.let {put("cat09", it)}
+						cat10?.let {put("cat10", it)}
+						cat11?.let {put("cat11", it)}
+						cat12?.let {put("cat12", it)}
+						cat13?.let {put("cat13", it)}
+						cat14?.let {put("cat14", it)}
+						cat15?.let {put("cat15", it)}
+						put("value", "$value${annotation?.let{" <$it>"} ?: ""}")
 					}
 				}
 			}
