@@ -1,6 +1,9 @@
 # e-Stat MCP Server
 
-[政府統計の総合窓口(e-Stat)](https://www.e-stat.go.jp/)の[API機能](https://www.e-stat.go.jp/api/)を呼び出すToolsを持つMCPサーバです。
+[政府統計の総合窓口(e-Stat)](https://www.e-stat.go.jp/)の[API機能](https://www.e-stat.go.jp/api/)を生成AIが扱えるようにするMCPサーバです。
+
+## MCPとは
+Model Context Protocol (MCP)は、アプリケーションが何を提供してくれるかを生成AIに教えるための様式です。Anthropicが2024年11月に提唱し、標準化を目指しています。生成AIからのリクエストを待つサーバとして実装したものを、MCPサーバと呼びます。既存のサービスを生成AIが扱えるようにするMCPサーバが数多く作られています。
 
 ## Tools
 
@@ -82,6 +85,40 @@ Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述�
 
 `RESPONSE_SIZE`には、e-Stat APIから1度に受信するデータ数を指定します。AIチャットのコンテキスト長を制限したい場合に使用します。e-Stat API側のデフォルトは100,000です。
 
+### VS Codeの設定
+VS Codeを使う場合は、`settings.json`に次の記述を加えてください。`settings.json`はVS Codeで`Ctrl + Shift + P`を押すと出てくるメニューから`Preferences: Open User Settings (JSON)`を選ぶと開くことができます。
+
+#### Dockerを使う場合
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "eStatMCP": {
+        "type": "stdio",
+        "command": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "-e",
+          "ESTAT_API_KEY",
+          "-e",
+          "RESPONSE_SIZE",
+          "ichiro21/estat-mcp"
+        ],
+        "env": {
+          "ESTAT_API_KEY": "${env:ESTAT_API_KEY}",
+          "RESPONSE_SIZE": "100"
+        }
+      }
+    }
+  }
+}
+```
+
+VS Codeでは設定の中でOSの環境変数を`${env:ESTAT_API_KEY}`のように呼び出すことができます。OSの環境変数を使わない場合は直接記述するか、[VS Codeに記憶させることができます。](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_add-an-mcp-server-to-your-workspace)
+
 ### サーバプログラムのビルド
 このMCPサーバをビルドするにはJava 17かそれ以降のバージョンとGradleが必要です。次のコマンドでjarファイルを作成します。
 
@@ -96,6 +133,12 @@ Claude Desktopを使う場合は、`claude_desktop_config.json`に次の記述�
 [https://claude.ai/share/ac66bee7-1178-4f8a-977c-cdd6629c0f21](https://claude.ai/share/ac66bee7-1178-4f8a-977c-cdd6629c0f21)
 
 調べたい調査名か決まっていないときは統計表を検索する前に統計調査を検索することができます。
+
+### 人口に関する統計を取得
+
+[https://claude.ai/share/5f6874e2-4fc6-42e5-a8dd-6e8feb6158df](https://claude.ai/share/5f6874e2-4fc6-42e5-a8dd-6e8feb6158df)
+
+人口推計の最新のデータを取得してくれました。
 
 ### 東京都の家計調査の結果を取得（途中まで）
 
