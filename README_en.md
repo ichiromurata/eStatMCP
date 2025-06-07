@@ -1,6 +1,6 @@
 # e-Stat MCP Server
 
-An MCP server that allows generative AI to handle the [API functions](https://www.e-stat.go.jp/api/en) of the [Portal Site of Official Statistics of Japan (e-Stat)](https://www.e-stat.go.jp/).
+An MCP server that allows generative AI to handle the [API functions](https://www.e-stat.go.jp/api/en) of the [Portal Site of Official Statistics of Japan (e-Stat)](https://www.e-stat.go.jp/en).
 
 ## About MCP
 Model Context Protocol (MCP) is a format proposed by Anthropic in November 2024 to inform generative AI about what an application can provide. An MCP server is implemented as a server that responds to requests from generative AI using the protocol. Many MCP servers have been created to enable generative AI to handle existing services.
