@@ -1,3 +1,5 @@
+README in English is [here](README_en.md)
+
 # e-Stat MCP Server
 
 [政府統計の総合窓口(e-Stat)](https://www.e-stat.go.jp/)の[API機能](https://www.e-stat.go.jp/api/)を生成AIが扱えるようにするMCPサーバです。
